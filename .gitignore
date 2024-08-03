@@ -1,9 +1,11 @@
+lsp
+
 # Prerequisites
 *.d
 
 # Object files
 *.o
-*.ko
+*.kod_fileno
 *.obj
 *.elf
 
