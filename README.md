@@ -7,6 +7,7 @@ Open your favourite terminal emulator and type in the `lsp` command.
 ```
 lsp [option(s)]
 
+-h      Print help information and exit.
 -f		Only list regular [f]iles.
 -d		Only list [d]irectories (including symbolic links).
 -m		[M]ix together directories and files instead of separating them.
@@ -31,7 +32,7 @@ Uses the `test` and `stat` system commands.
 
 ### Build
 
-Open a Unix-like terminal in the folder and run
+Open a terminal emulator in the folder and run
 ```
 make
 ```

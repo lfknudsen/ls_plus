@@ -455,6 +455,62 @@ static int scan_directory(struct dirent*** files, char seeking,
 	return scandir(".", files, fn_filter, fn_sort);
 }
 
+char clow(char a)
+{
+	if (a >= 65 && a <= 90)
+		return a + 32;
+	return a;
+}
+
+char cup(char a)
+{
+	if (a >= 97 && a <= 122)
+		return a - 32;
+	return a;
+}
+
+char* slow(char* in, char* out)
+{
+	out = malloc(strlen(in));
+	for (size_t i = 0; i < strlen(in); i++)
+	{
+		if (in[i] >= 65 && in[i] <= 90)
+			out[i] = in[i] + 32;
+	}
+	return out;
+}
+
+char* sup(char* in, char* out)
+{
+	out = malloc(strlen(in));
+	for (size_t i = 0; i < strlen(in); i++)
+	{
+		if (in[i] >= 97 && in[i] <= 122)
+			out[i] = in[i] - 32;
+	}
+	return out;
+}
+
+void print_help()
+{
+	printf("Small alternative to ls.\n");
+	printf("Usage:\n");
+	printf("lsp [option(s)]\n");
+	printf("  -h    Print help information and exit.\n");
+	printf("  -f    Only list regular [f]iles.\n");
+	printf("  -d    Only list [d]irectories (incl. symbolic links).\n");
+	printf("  -m    [Mix] together directories and files instead of separating them.\n");
+	printf("  -a    Sort entries using the built-in C std library \"[a]lphasort\",\
+ which more or less just sorts by direct numerical value\
+ (e.g. 'Z' comes before 'a' to it). However, it should\
+ take locale into account, so it may support non-ASCII\
+ characters better.\n");
+	printf("  -s    [S]wap directory and file listing order, so directories precede files.\n");
+	printf("  -o	For the sake of sorting, the first d[o]t in filenames is ignored.\n");
+	printf("  -i	[I]gnore all files/directories that start with `.`.\n");
+	printf("  -g	Ri[g]ht-align filenames.\n");
+}
+
 /*
 * Very minimal alternative to ls.
 * Print a list of files and/or directories in the current directory,
@@ -482,23 +538,43 @@ int main(int argc, char** argv)
 	char mix_types			= 0;
 	char use_reverse_sort	= 0;
 	char use_alphasort		= 0;
-	char swap_print_order = 0;
+	char swap_print_order	= 0;
 	char mix_dotfiles		= 0;
 	char hide_dotfiles		= 0;
 	char right_align		= 0;
+	char print_help_msg		= 0;
 
 	for (int i = 1; i < argc; i++)
 	{
-		if		(strcmp(argv[i],"-f") == 0) narrow_type		   =  1;
-		else if (strcmp(argv[i],"-d") == 0) narrow_type		   = -1;
-		else if (strcmp(argv[i],"-m") == 0) mix_types		   =  1;
-		else if (strcmp(argv[i],"-r") == 0) use_reverse_sort   =  1;
-		else if (strcmp(argv[i],"-a") == 0) use_alphasort	   =  1;
-		else if (strcmp(argv[i],"-s") == 0) swap_print_order   =  1;
-		else if (strcmp(argv[i],"-o") == 0) mix_dotfiles	   =  1;
-		else if (strcmp(argv[i],"-i") == 0) hide_dotfiles	   =  1;
-		else if (strcmp(argv[i],"-g") == 0) right_align		   =  1;
+		if (argv[i][0] == '-')
+		{
+			int idx = 1;
+			char c = argv[i][idx];
+			while (c != '\0')
+			{
+				if		(c == 'f') { narrow_type		=  1; }
+				else if (c == 'd') { narrow_type		= -1; }
+				else if (c == 'm') { mix_types			=  1; }
+				else if (c == 'r') { use_reverse_sort	=  1; }
+				else if (c == 'a') { use_alphasort		=  1; }
+				else if (c == 's') { swap_print_order	=  1; }
+				else if (c == 'o') { mix_dotfiles		=  1; }
+				else if (c == 'i') { hide_dotfiles		=  1; }
+				else if (c == 'g') { right_align		=  1; }
+				else if (c == 'h') { print_help_msg		=  1; }
+				idx ++;
+				c = argv[i][idx];
+			}
+		}
 	}
+
+	if (print_help_msg)
+	{
+		print_help();
+		return 0;
+	}
+	// printf("Narrow type: %d, Mix types: %d, Reverse sort: %d,\nAlphasort: %d, Swap: %d, Mix dotfiles: %d,\nHide dotfiles: %d, Right align: %d\n",
+	// narrow_type, mix_types, use_reverse_sort, use_alphasort, swap_print_order, mix_dotfiles, hide_dotfiles, right_align);
 
 	struct dirent** files;
 	int n = 0;
@@ -567,7 +643,7 @@ int main(int argc, char** argv)
 	printf("%s  █  ", size);
 	if (right_align)
 	{
-		for (int i = 0; i < name_align; i++)
+		for (int i = 0; i < name_align - 1; i++)
 			putchar(' ');
 	}
 	printf("%s%s\n", name, c_regular);
