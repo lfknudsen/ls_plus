@@ -45,6 +45,34 @@ static int is_const_link(const char* dname){
 	return 0;
 }
 
+static int is_file_hide_dots(const struct dirent* a)
+{
+	char* ta = malloc(strlen("test -f \"") + strlen(a->d_name) + 1 + 1);
+	sprintf(ta, "test -f \"%s\"", a->d_name);
+	if (!system(ta) && a->d_name[0] != '.')
+	{
+		free(ta);
+		return 1;
+	}
+
+	free(ta);
+	return 0;
+}
+
+static int is_dir_hide_dots(const struct dirent* a)
+{
+	char* ta = malloc(strlen("test -d \"") + strlen(a->d_name) + 1 + 1);
+	sprintf(ta, "test -d \"%s\"", a->d_name);
+	if (!system(ta) && a->d_name[0] != '.')
+	{
+		free(ta);
+		return 1;
+	}
+
+	free(ta);
+	return 0;
+}
+
 static int is_file(const struct dirent* a)
 {
 	char* ta = malloc(strlen("test -f \"") + strlen(a->d_name) + 1 + 1);
@@ -71,6 +99,33 @@ static int is_dir(const struct dirent* a)
 
 	free(ta);
 	return 0;
+}
+
+static int is_not_link(const struct dirent* a)
+{
+	if (!is_const_link(a->d_name))
+	{
+		char* ta = malloc(strlen("test -d \"") + strlen(a->d_name) + 1 + 1);
+		sprintf(ta, "test -f \"%s\"", a->d_name);
+		if (!system(ta))
+		{
+			free(ta);
+			return 1;
+		}
+		sprintf(ta, "test -d \"%s\"", a->d_name);
+		if (!system(ta))
+		{
+			free(ta);
+			return 1;
+		}
+		free(ta);
+	}
+	return 0;
+}
+
+static int is_not_dot(const struct dirent* a)
+{
+	return (a->d_name[0] != '.');
 }
 
 static int is_number(char c)
@@ -190,6 +245,151 @@ static int reverse_asort(const struct dirent** a, const struct dirent** b)
 	return -1;
 }
 
+static int asort_mix(const struct dirent** a, const struct dirent** b)
+{
+	int ai = 0;
+	int bi = 0;
+	char ac = (*a)->d_name[0];
+	char bc = (*b)->d_name[0];
+	if (ac == '.')
+	{
+		ac = (*a)->d_name[1];
+		ai ++;
+	}
+	if (bc == '.')
+	{
+		bc = (*b)->d_name[1];
+		bi ++;
+	}
+	while (ac != '\0' && bc != '\0')
+	{
+		if (is_uppercase(ac))
+		{
+			if (is_uppercase(bc))
+			{
+				if (ac < bc)
+					return -1;
+				else if (ac > bc)
+					return 1;
+				ai ++;
+				bi ++;
+				ac = (*a)->d_name[ai];
+				bc = (*b)->d_name[bi];
+				continue;
+			}
+			else if (is_lowercase(bc))
+			{
+				if (ac < bc - 32)
+					return -1;
+				else if (ac > bc - 32)
+					return 1;
+				ai ++;
+				bi ++;
+				ac = (*a)->d_name[ai];
+				bc = (*b)->d_name[bi];
+				continue;
+			}
+			else if (is_number(bc))
+				return 1;
+		}
+		else if (is_lowercase(ac))
+		{
+			if (is_lowercase(bc))
+			{
+				if (ac < bc)
+					return -1;
+				else if (ac > bc)
+					return 1;
+				ai ++;
+				bi ++;
+				ac = (*a)->d_name[ai];
+				bc = (*b)->d_name[bi];
+				continue;
+			}
+			else if (is_uppercase(bc))
+			{
+				if (ac < bc + 32)
+					return -1;
+				else if (ac > bc + 32)
+					return 1;
+				ai ++;
+				bi ++;
+				ac = (*a)->d_name[ai];
+				bc = (*b)->d_name[bi];
+				continue;
+			}
+			else if (is_number(bc))
+				return 1;
+		}
+		else if (is_number(ac))
+		{
+			if (is_number(bc))
+			{
+				if (ac < bc)
+					return -1;
+				if (ac > bc)
+					return 1;
+				ai ++;
+				bi ++;
+				ac = (*a)->d_name[ai];
+				bc = (*b)->d_name[bi];
+				continue;
+			}
+		}
+		if (ac < bc)
+			return -1;
+		else if (ac > bc)
+			return 1;
+		ai ++;
+		bi ++;
+		ac = (*a)->d_name[ai];
+		bc = (*b)->d_name[bi];
+	}
+	if (ac == '\0' && bc != '\0')
+		return -1;
+	if (ac != '\0' && bc == '\0')
+		return 1;
+	return 0;
+}
+
+static int reverse_asort_mix(const struct dirent** a, const struct dirent** b)
+{
+	int result = asort_mix(a,b);
+	if (result < 0)
+		return 1;
+	return -1;
+}
+
+static void print_all(struct dirent** files, int n, const size_t stat_sz, const char* size_align,
+					  const int right_align, const char* cmd_after, const char* colour_dir,
+					  const char* colour_reg)
+{
+	size_t test_len = strlen("test -d \"");
+	for (int i = 0; i < n; i++)
+	{
+		size_t name_len = strlen(files[i]->d_name);
+		char* cmd = malloc(stat_sz + name_len + 1);
+		sprintf(cmd, "stat --printf=\"%%A  █ %%%ss \" \"%s\"", size_align, files[i]->d_name);
+		if (!system(cmd))
+		{
+			cmd = realloc(cmd, test_len + 2 + name_len);
+			sprintf(cmd, "test -d \"%s\"", files[i]->d_name);
+			const char* colour;
+			if (!system(cmd))
+				colour = colour_dir;
+			else
+				colour = colour_reg;
+			if (right_align)
+				printf("%s%s%20s\x1b[m\n", cmd_after, colour, files[i]->d_name);
+			else
+				printf("%s%s%s\x1b[m\n", cmd_after, colour, files[i]->d_name);
+		}
+		free(files[i]);
+		free(cmd);
+	}
+}
+
+
 static void print_dirents(struct dirent** files, int n, const size_t stat_sz, const char* size_align,
 				   const int right_align, const char* cmd_after, const char* colour)
 {
@@ -209,6 +409,51 @@ static void print_dirents(struct dirent** files, int n, const size_t stat_sz, co
 	}
 }
 
+static int scan_directory(struct dirent*** files, char seeking,
+						 char use_reverse_sort, char use_alphasort, char hide_dotfiles,
+						 char mix_dotfiles)
+{
+	int (*fn_filter) (const struct dirent*);
+	if (seeking == 0)
+	{
+		if (hide_dotfiles)
+			fn_filter = &is_file_hide_dots;
+		else
+			fn_filter = &is_file;
+	}
+	else if (seeking == 1)
+	{
+		if (hide_dotfiles)
+			fn_filter = &is_dir_hide_dots;
+		else
+			fn_filter = &is_dir;
+	}
+	else
+	{
+		if (hide_dotfiles)
+			fn_filter = &is_not_dot;
+		else
+			fn_filter = &is_not_link;
+	}
+
+	int (*fn_sort) (const struct dirent**, const struct dirent**);
+	if (use_reverse_sort)
+		if (use_alphasort)
+			fn_sort = &reverse_sort;
+		else if (mix_dotfiles)
+			fn_sort = &reverse_asort_mix;
+		else
+			fn_sort = &reverse_asort;
+	else
+		if (use_alphasort)
+			fn_sort = &alphasort;
+		else if (mix_dotfiles)
+			fn_sort = &asort_mix;
+		else
+			fn_sort = &asort;
+
+	return scandir(".", files, fn_filter, fn_sort);
+}
 
 /*
 * Very minimal alternative to ls.
@@ -219,73 +464,79 @@ static void print_dirents(struct dirent** files, int n, const size_t stat_sz, co
 * Usage:
 lsp [option(s)]
 
--f		Only list regular files.
--d		Only list directories (including symbolic links).
--r      Sort in reverse alphabetical order.
--a      Sort entries using the built-in C std library "alphasort",
-		which is faster but just sorts by ASCII value.
--c      Swap directory and file listing.
+-f		Only list regular [f]iles.
+-d		Only list [d]irectories (including symbolic links).
+-m		[M]ix together directories and files instead of separating them.
+-r      Sort in [r]everse alphabetical order.
+-a      Sort entries using the built-in C std library "[a]lphasort", which more or less just
+		sorts by direct numerical value (e.g. 'Z' comes before 'a' to it). However, it should
+		take locale into account, so it may support non-ASCII characters better.
+-s      [S]wap directory and file listing order, so directories precede files.
+-o		For the sake of sorting, the first d[o]t in filenames is ignored.
+-i		[I]gnore all files/directories that start with `.`.
+-g		Ri[g]ht-align filenames.
 */
 int main(int argc, char** argv)
 {
 	char narrow_type		= 0;
-	char sort_order			= 0;
-	char default_sort		= 0;
-	char change_print_order = 0;
+	char mix_types			= 0;
+	char use_reverse_sort	= 0;
+	char use_alphasort		= 0;
+	char swap_print_order = 0;
+	char mix_dotfiles		= 0;
+	char hide_dotfiles		= 0;
+	char right_align		= 0;
 
 	for (int i = 1; i < argc; i++)
 	{
 		if		(strcmp(argv[i],"-f") == 0) narrow_type		   =  1;
 		else if (strcmp(argv[i],"-d") == 0) narrow_type		   = -1;
-		else if (strcmp(argv[i],"-r") == 0) sort_order		   =  1;
-		else if (strcmp(argv[i],"-a") == 0) default_sort	   =  1;
-		else if (strcmp(argv[i],"-c") == 0) change_print_order =  1;
+		else if (strcmp(argv[i],"-m") == 0) mix_types		   =  1;
+		else if (strcmp(argv[i],"-r") == 0) use_reverse_sort   =  1;
+		else if (strcmp(argv[i],"-a") == 0) use_alphasort	   =  1;
+		else if (strcmp(argv[i],"-s") == 0) swap_print_order   =  1;
+		else if (strcmp(argv[i],"-o") == 0) mix_dotfiles	   =  1;
+		else if (strcmp(argv[i],"-i") == 0) hide_dotfiles	   =  1;
+		else if (strcmp(argv[i],"-g") == 0) right_align		   =  1;
 	}
 
 	struct dirent** files;
 	int n = 0;
-	if (narrow_type >= 0)
-	{
-		if (sort_order == 1)
-			n = scandir(".", &files, is_file, reverse_asort);
-		else
-			n = scandir(".", &files, is_file, asort);
-		if (n < 0)
-		{
-			printf("Could not scan files. Scandir() returned error code %d.\n", errno);
-			return 1;
-		}
-	}
-
 	struct dirent** dirs;
 	int dn = 0;
-	if (narrow_type <= 0)
+
+	if (narrow_type == 0 && mix_types)
 	{
-		if (sort_order == 1)
+		n = scan_directory(&files, -1, use_reverse_sort, use_alphasort, hide_dotfiles, mix_dotfiles);
+		if (n <= 0)
+			return 0;
+	}
+	else
+	{
+		if (narrow_type >= 0)
 		{
-			if (default_sort)
-				dn = scandir(".", &dirs, is_dir, reverse_sort);
-			else
-				dn = scandir(".", &dirs, is_dir, reverse_asort);
+			n = scan_directory(&files, 0, use_reverse_sort, use_alphasort, hide_dotfiles, mix_dotfiles);
+			if (n < 0)
+			{
+				printf("Could not scan files. Scandir() returned error code %d.\n", errno);
+				return 1;
+			}
 		}
-		else
+
+		if (narrow_type <= 0)
 		{
-			if (default_sort)
-				dn = scandir(".", &dirs, is_dir, alphasort);
-			else
-				dn = scandir(".", &dirs, is_dir, asort);
+			dn = scan_directory(&dirs, 1, use_reverse_sort, use_alphasort, hide_dotfiles, mix_dotfiles);
+			if (dn < 0)
+			{
+				printf("Could not scan files. Scandir() returned error code %d.\n", errno);
+				return 1;
+			}
 		}
-		if (dn < 0)
-		{
-			printf("Could not scan files. Scandir() returned error code %d.\n", errno);
-			return 1;
-		}
+
+		if (n <= 0 && dn <= 0)
+			return 0;
 	}
 
-	if (n <= 0 && dn <= 0)
-		return 0;
-
-	const int   right_align = 0;
 	const char* permissions = "Permissions";
 	const char* size		= "Size";
 	const char* name		= "Name";
@@ -320,14 +571,19 @@ int main(int argc, char** argv)
 			putchar(' ');
 	}
 	printf("%s%s\n", name, c_regular);
-	if (change_print_order)
+	if (mix_types && files)
 	{
-		if (narrow_type <= 0)
+		print_all(files, n, stat_sz, size_align, right_align, cmd_after, c_directory, c_regular);
+		free(files);
+	}
+	else if (swap_print_order)
+	{
+		if (narrow_type <= 0 && dirs)
 		{
 			print_dirents(dirs, dn, stat_sz, size_align, right_align, cmd_after, c_directory);
 			free(dirs);
 		}
-		if (narrow_type >= 0)
+		if (narrow_type >= 0 && files)
 		{
 			print_dirents(files, n, stat_sz, size_align, right_align, cmd_after, c_regular);
 			free(files);
@@ -335,12 +591,12 @@ int main(int argc, char** argv)
 	}
 	else
 	{
-		if (narrow_type >= 0)
+		if (narrow_type >= 0 && files)
 		{
 			print_dirents(files, n, stat_sz, size_align, right_align, cmd_after, c_regular);
 			free(files);
 		}
-		if (narrow_type <= 0)
+		if (narrow_type <= 0 && dirs)
 		{
 			print_dirents(dirs, dn, stat_sz, size_align, right_align, cmd_after, c_directory);
 			free(dirs);
