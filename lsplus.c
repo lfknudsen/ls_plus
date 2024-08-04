@@ -1,9 +1,12 @@
+/*
+ * Author: github.com/lfknudsen
+ */
+
 #include <dirent.h>
+#include <errno.h>
 #include <stdio.h>
-#include <sys/types.h>
 #include <stdlib.h>
 #include <string.h>
-#include <assert.h>
 
 static int is_link(char* dname){
 	if (dname[0] == '.' && (dname[1] == '.' || dname[1] == '\0'))
@@ -70,20 +73,20 @@ static int is_dir(const struct dirent* a)
 	return 0;
 }
 
-int is_number(char c)
+static int is_number(char c)
 {
 	return (c >= 48 && c <= 58);
 }
-int is_lowercase(char c)
+static int is_lowercase(char c)
 {
 	return (c >= 97 && c <= 122);
 }
-int is_uppercase(char c)
+static int is_uppercase(char c)
 {
 	return (c >= 64 && c <= 90);
 }
 
-int asort(const struct dirent** a, const struct dirent** b)
+static int asort(const struct dirent** a, const struct dirent** b)
 {
 	int i = 0;
 	char ac = (*a)->d_name[0];
@@ -171,34 +174,72 @@ int asort(const struct dirent** a, const struct dirent** b)
 	return 0;
 }
 
-int reverse_sort(const struct dirent** a, const struct dirent** b)
+static int reverse_sort(const struct dirent** a, const struct dirent** b)
 {
 	int result = alphasort(a,b);
 	if (result < 0)
 		return 1;
-	else
-		return -1;
+	return -1;
 }
 
-int reverse_asort(const struct dirent** a, const struct dirent** b)
+static int reverse_asort(const struct dirent** a, const struct dirent** b)
 {
 	int result = asort(a,b);
 	if (result < 0)
 		return 1;
-	else
-		return -1;
+	return -1;
 }
+
+static void print_dirents(struct dirent** files, int n, const size_t stat_sz, const char* size_align,
+				   const int right_align, const char* cmd_after, const char* colour)
+{
+	for (int i = 0; i < n; i++)
+	{
+		char* cmd = malloc(stat_sz + strlen(files[i]->d_name) + 1);
+		sprintf(cmd, "stat --printf=\"%%A  █ %%%ss \" \"%s\"", size_align, files[i]->d_name);
+		if (!system(cmd))
+		{
+			if (right_align)
+				printf("%s%s%20s\x1b[m\n", cmd_after, colour, files[i]->d_name);
+			else
+				printf("%s%s%s\x1b[m\n", cmd_after, colour, files[i]->d_name);
+		}
+		free(files[i]);
+		free(cmd);
+	}
+}
+
+
+/*
+* Very minimal alternative to ls.
+* Print a list of files and/or directories in the current directory,
+* along with permissions and size (in bytes).
+* Directory names are coloured.
+*
+* Usage:
+lsp [option(s)]
+
+-f		Only list regular files.
+-d		Only list directories (including symbolic links).
+-r      Sort in reverse alphabetical order.
+-a      Sort entries using the built-in C std library "alphasort",
+		which is faster but just sorts by ASCII value.
+-c      Swap directory and file listing.
+*/
 int main(int argc, char** argv)
 {
-	char narrow_type = 0;
-	char sort_order  = 0;
-	int target = -1;
+	char narrow_type		= 0;
+	char sort_order			= 0;
+	char default_sort		= 0;
+	char change_print_order = 0;
 
 	for (int i = 1; i < argc; i++)
 	{
-		if		(strcmp(argv[i],"-f") == 0) narrow_type =  1;
-		else if (strcmp(argv[i],"-d") == 0) narrow_type = -1;
-		else if (strcmp(argv[i],"-r") == 0) sort_order  =  1;
+		if		(strcmp(argv[i],"-f") == 0) narrow_type		   =  1;
+		else if (strcmp(argv[i],"-d") == 0) narrow_type		   = -1;
+		else if (strcmp(argv[i],"-r") == 0) sort_order		   =  1;
+		else if (strcmp(argv[i],"-a") == 0) default_sort	   =  1;
+		else if (strcmp(argv[i],"-c") == 0) change_print_order =  1;
 	}
 
 	struct dirent** files;
@@ -209,10 +250,10 @@ int main(int argc, char** argv)
 			n = scandir(".", &files, is_file, reverse_asort);
 		else
 			n = scandir(".", &files, is_file, asort);
-		if (n < 1)
+		if (n < 0)
 		{
-			printf("Could not scan files. Return val: %d\n", n);
-			return n;
+			printf("Could not scan files. Scandir() returned error code %d.\n", errno);
+			return 1;
 		}
 	}
 
@@ -221,24 +262,36 @@ int main(int argc, char** argv)
 	if (narrow_type <= 0)
 	{
 		if (sort_order == 1)
-			dn = scandir(".", &dirs, is_dir, reverse_asort);
-		else
-			dn = scandir(".", &dirs, is_dir, asort);
-		if (dn < 1)
 		{
-			printf("Could not scan files. Return val: %d\n", dn);
-			return dn;
+			if (default_sort)
+				dn = scandir(".", &dirs, is_dir, reverse_sort);
+			else
+				dn = scandir(".", &dirs, is_dir, reverse_asort);
+		}
+		else
+		{
+			if (default_sort)
+				dn = scandir(".", &dirs, is_dir, alphasort);
+			else
+				dn = scandir(".", &dirs, is_dir, asort);
+		}
+		if (dn < 0)
+		{
+			printf("Could not scan files. Scandir() returned error code %d.\n", errno);
+			return 1;
 		}
 	}
 
-	int right_align = 0;
+	if (n <= 0 && dn <= 0)
+		return 0;
 
+	const int   right_align = 0;
 	const char* permissions = "Permissions";
 	const char* size		= "Size";
 	const char* name		= "Name";
-	const char* block		= "█";
 	const char* c_header	= "\x1b[33m";
 	const char* c_regular	= "\x1b[m";
+	const char* c_directory = "\x1b[32m";
 	const char* stat_a		= "stat --printf=\"%%%A  █  %%%";
 	const char* stat_b		= "s \" \"";
 	const char* cmd_after	= " █  ";
@@ -257,52 +310,41 @@ int main(int argc, char** argv)
 
 	unsigned char name_align= 21 - strlen(name);
 
-	printf("\x1b[33mPermissions █ ");
+	printf("%s%s █ ", c_header, permissions);
 	for (int i = 0; i < size_align_t; i++)
 		putchar(' ');
-	printf("Size  █  ");
+	printf("%s  █  ", size);
 	if (right_align)
 	{
 		for (int i = 0; i < name_align; i++)
 			putchar(' ');
 	}
-	printf("Name\x1b[m\n");
-	if (narrow_type >= 0)
+	printf("%s%s\n", name, c_regular);
+	if (change_print_order)
 	{
-		for (int i = 0; i < n; i++)
+		if (narrow_type <= 0)
 		{
-			int name_len = strlen(files[i]->d_name);
-			char* cmd = malloc(stat_sz + strlen(files[i]->d_name) + 1);
-			sprintf(cmd, "stat --printf=\"%%A  █ %%%ss \" \"%s\"", size_align, files[i]->d_name);
-			if (!system(cmd))
-			{
-				if (right_align)
-					printf("%s%20s\n", cmd_after, files[i]->d_name);
-				else
-					printf("%s%s\n", cmd_after, files[i]->d_name);
-			}
-			free(files[i]);
-			free(cmd);
+			print_dirents(dirs, dn, stat_sz, size_align, right_align, cmd_after, c_directory);
+			free(dirs);
 		}
-		free(files);
+		if (narrow_type >= 0)
+		{
+			print_dirents(files, n, stat_sz, size_align, right_align, cmd_after, c_regular);
+			free(files);
+		}
 	}
-	if (narrow_type <= 0)
+	else
 	{
-		for (int i = 0; i < dn; i++)
+		if (narrow_type >= 0)
 		{
-			char* cmd = malloc(stat_sz + strlen(dirs[i]->d_name) + 1);
-			sprintf(cmd, "stat --printf=\"%%A  █ %%%ss \" \"%s\"", size_align, dirs[i]->d_name);
-			if (!system(cmd))
-			{
-				if (right_align)
-					printf("%s\x1b[32m%20s\x1b[m\n", cmd_after, dirs[i]->d_name);
-				else
-					printf("%s\x1b[32m%s\x1b[m\n", cmd_after, dirs[i]->d_name);
-			}
-			free(dirs[i]);
-			free(cmd);
+			print_dirents(files, n, stat_sz, size_align, right_align, cmd_after, c_regular);
+			free(files);
 		}
-		free(dirs);
+		if (narrow_type <= 0)
+		{
+			print_dirents(dirs, dn, stat_sz, size_align, right_align, cmd_after, c_directory);
+			free(dirs);
+		}
 	}
 	return 0;
 }
