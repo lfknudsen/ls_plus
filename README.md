@@ -1,6 +1,6 @@
 # LS Plus
 
-A simple alternative to the `ls -al` command which properly sorts the output alphabetically, puts a border between columns, separates files and directories, and shows only the most important information. Written in C. Tested on Linux.
+A minimal alternative to the `ls` command which properly sorts the output alphabetically, puts a border between columns, separates files and directories, and shows only the most important information (to me). Written in C. Tested on (GNU/)Linux.
 
 ## Use
 Open your favourite terminal emulator and type in the `lsp` command.
